@@ -246,3 +246,88 @@ sim_df_nonconst %>%
     ##   <chr>          <dbl>  <dbl>
     ## 1 (Intercept)     1.93 0.0793
     ## 2 x               3.11 0.104
+
+## Revist the nyc airbnb
+
+``` r
+data("nyc_airbnb")
+
+nyc_airbnb = 
+  nyc_airbnb %>% 
+  mutate(stars = review_scores_location / 2) %>% 
+  rename(
+    borough = neighbourhood_group,
+    neighborhood = neighbourhood) %>% 
+  filter(borough != "Staten Island") %>% 
+  select(price, stars, borough, neighborhood, room_type)
+```
+
+``` r
+nyc_airbnb %>% 
+  ggplot(aes(x = stars, y = price, color = room_type)) + 
+  geom_point() 
+```
+
+    ## Warning: Removed 9962 rows containing missing values (geom_point).
+
+<img src="bootstrapping_files/figure-gfm/unnamed-chunk-14-1.png" width="90%" />
+
+``` r
+nyc_airbnb %>% 
+  filter(borough == "Manhattan") %>% 
+  drop_na(stars) %>% 
+  bootstrap(1000, id = "strap_number") %>% 
+  mutate(
+    models = map(.x = strap, ~lm(price ~ stars, data = .x)),
+    results = map(models, broom::tidy)
+  ) %>% 
+  select(strap_number, results) %>% 
+  unnest(results) %>% 
+  group_by(term) %>% 
+  summarize(
+    mean_est = mean(estimate),
+    se_est = sd(estimate))
+```
+
+    ## `summarise()` ungrouping output (override with `.groups` argument)
+
+    ## # A tibble: 2 x 3
+    ##   term        mean_est se_est
+    ##   <chr>          <dbl>  <dbl>
+    ## 1 (Intercept)    -35.0  31.8 
+    ## 2 stars           43.4   6.43
+
+Compare this to ‘lm’:
+
+``` r
+nyc_airbnb %>% 
+  filter(borough == "Manhattan") %>% 
+  drop_na(stars) %>%
+  lm(price ~ stars, data = .) %>% 
+  broom::tidy()
+```
+
+    ## # A tibble: 2 x 5
+    ##   term        estimate std.error statistic  p.value
+    ##   <chr>          <dbl>     <dbl>     <dbl>    <dbl>
+    ## 1 (Intercept)    -34.3     22.9      -1.50 1.35e- 1
+    ## 2 stars           43.3      4.78      9.07 1.39e-19
+
+``` r
+airbnb_boot_results =
+  nyc_airbnb %>% 
+  filter(borough == "Manhattan") %>% 
+  modelr::bootstrap(n = 1000) %>% 
+  mutate(
+    models = map(strap, ~ lm(price ~ stars + room_type, data = .x)),
+    results = map(models, broom::tidy)) %>% 
+  select(results) %>% 
+  unnest(results) %>% 
+  filter(term == "stars") %>% 
+  ggplot(aes(x = estimate)) + 
+  geom_density()
+
+airbnb_boot_results
+```
+
+<img src="bootstrapping_files/figure-gfm/unnamed-chunk-17-1.png" width="90%" />
